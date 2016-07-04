@@ -64,6 +64,37 @@ object TutMain extends Zed {
   def mod(f: TState => TState): Tut[Unit] = modify(f).lift[IO]
 
   ////// YIKES
+  
+  class LineFormatter(os: OutputStream) extends FilterOutputStream(os) {
+    private[this] val line = new StringBuilder()
+
+    // TODO:RD: Placeholder for some arbitrary user function
+    // e.g., maybe set as a sbt parameter? Default to identity?
+    // TODO:RD: how to selectively enable this? tut:book+wrap ?
+    // TODO:RD: this function probably needs to be passed the modifier too
+    def f(line: String): String = {
+      val longLine = line.length > 40
+      lazy val isComment = line.startsWith("//")
+      lazy val hasEquals = line.contains("=")
+
+      longLine && isComment && hasEquals match {
+        case false => line
+        case true  => 
+          val Array(before, after) = line.split("=")
+          s"${before}=\n//  ${after}"
+      }
+    }
+
+    override def write(n: Int): Unit = 
+      (n == '\n'.toInt) match {
+        case false => line.append(n.toChar)
+        case true  =>
+          val output = f(line.toString)
+          output.map(_.toInt).foreach(super.write)
+          super.write(n)
+          line.setLength(0)
+      }
+  }
 
   class Spigot(os: OutputStream) extends FilterOutputStream(os) {
     private var baos = new ByteArrayOutputStream()
@@ -144,7 +175,8 @@ object TutMain extends Zed {
   def file(in: File, out: File, opts: List[String]): IO[TState] =
     IO(new FileOutputStream(out)).using           { f =>
     IO(new AnsiFilterStream(f)).using             { a =>
-    IO(new Spigot(a)).using                       { o =>
+    IO(new LineFormatter(a)).using                { r =>
+    IO(new Spigot(r)).using                       { o =>
     IO(new PrintStream(o, true, Encoding)).using  { s =>
     IO(new OutputStreamWriter(s, Encoding)).using { w =>
     IO(new PrintWriter(w)).using                  { p =>
@@ -154,7 +186,7 @@ object TutMain extends Zed {
         i  <- newInterpreter(p, opts)
         ts <- tut(in).exec(TState(false, Set(), false, i, p, o, "", false, in, opts)).ensuring(IO(Console.setOut(oo)))
       } yield ts
-    }}}}}}
+    }}}}}}}
 
   def newInterpreter(pw: PrintWriter, opts: List[String]): IO[IMain] =
     IO(new IMain(new Settings <| (_.embeddedDefaults[TutMain.type]) <| (_.processArguments(opts, true)), pw))
