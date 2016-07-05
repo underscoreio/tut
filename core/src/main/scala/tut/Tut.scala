@@ -70,18 +70,22 @@ object TutMain extends Zed {
 
     // TODO:RD: Placeholder for some arbitrary user function
     // e.g., maybe set as a sbt parameter? Default to identity?
-    // TODO:RD: how to selectively enable this? tut:book+wrap ?
+    // TODO:RD: how to selectively enable this? tut:book+wrap tut:book>wrap ?
     // TODO:RD: this function probably needs to be passed the modifier too
     def f(line: String): String = {
-      val longLine = line.length > 40
+      val longLine = line.length > 80
       lazy val isComment = line.startsWith("//")
       lazy val hasEquals = line.contains("=")
 
       longLine && isComment && hasEquals match {
         case false => line
         case true  => 
-          val Array(before, after) = line.split("=")
-          s"${before}=\n//  ${after}"
+          line.split("=") match {
+            case Array(before, after) => s"${before}=\n//  ${after}"
+            case _ => 
+              System.err.println(s"Wrap heuristic failed for: $line")
+              line
+          }
       }
     }
 
